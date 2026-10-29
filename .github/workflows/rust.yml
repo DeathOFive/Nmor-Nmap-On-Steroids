@@ -40,10 +40,25 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Build, test and package
         run: bash scripts/package-linux.sh
+      - name: Determine package version
+        id: package
+        run: echo "version=$(awk -F '"' '/^version[[:space:]]*=/ {print $2; exit}' Cargo.toml)" >> "$GITHUB_OUTPUT"
+      - name: Verify archive and installed binary
+        shell: bash
+        run: |
+          version="${{ steps.package.outputs.version }}"
+          test -n "$version"
+          stage="$RUNNER_TEMP/nmor-smoke"
+          mkdir -p "$stage"
+          tar -xzf "dist/nmor-v${version}-linux-x86_64.tar.gz" -C "$stage"
+          "$stage/nmor_release/nmor" --version
+          (cd dist && sha256sum --check SHA256SUMS.txt)
+          NMOR_INSTALL_PREFIX="$stage/install" bash "$stage/nmor_release/install-linux.sh"
+          "$stage/install/bin/nmor" --help >/dev/null
       - uses: actions/upload-artifact@v4
         with:
-          name: nmor-v0.2.0-linux-x86_64
+          name: nmor-v${{ steps.package.outputs.version }}-linux-x86_64
           path: |
-            dist/nmor-v0.2.0-linux-x86_64.tar.gz
+            dist/nmor-v${{ steps.package.outputs.version }}-linux-x86_64.tar.gz
             dist/SHA256SUMS.txt
           if-no-files-found: error
