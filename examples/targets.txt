@@ -1,0 +1,4 @@
+# Nmor targets file: comment lines start with #
+127.0.0.1
+localhost
+127.0.0.1/32  # duplicate addresses are scanned once

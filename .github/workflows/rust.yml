@@ -1,0 +1,49 @@
+name: Nmor Linux checks and release archive
+
+on:
+  push:
+    branches: [main, linux-v0.2.0]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Enforce formatting
+        run: cargo fmt --all -- --check
+      - name: Lint
+        run: cargo clippy --all-targets -- -D warnings
+      - name: Test
+        run: cargo test --all-targets
+      - name: Build Linux executable
+        run: cargo build --release --locked
+
+  linux-artifact:
+    if: github.event_name != 'pull_request'
+    needs: linux-checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Build, test and package
+        run: bash scripts/package-linux.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nmor-v0.2.0-linux-x86_64
+          path: |
+            dist/nmor-v0.2.0-linux-x86_64.tar.gz
+            dist/SHA256SUMS.txt
+          if-no-files-found: error

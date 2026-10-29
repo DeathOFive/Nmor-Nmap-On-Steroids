@@ -1,0 +1,29 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug Nmor (local TCP scan)",
+      "type": "lldb",
+      "request": "launch",
+      "cargo": {
+        "args": ["build", "--bin", "nmor"],
+        "filter": { "name": "nmor", "kind": "bin" }
+      },
+      "args": ["-sT", "-Pn", "-p", "22,80,443,8080", "127.0.0.1", "localhost"],
+      "cwd": "${workspaceFolder}",
+      "terminal": "integrated"
+    },
+    {
+      "name": "Debug Nmor (host discovery)",
+      "type": "lldb",
+      "request": "launch",
+      "cargo": {
+        "args": ["build", "--bin", "nmor"],
+        "filter": { "name": "nmor", "kind": "bin" }
+      },
+      "args": ["-sn", "-PS22,80,443", "-iL", "examples/targets.txt"],
+      "cwd": "${workspaceFolder}",
+      "terminal": "integrated"
+    }
+  ]
+}

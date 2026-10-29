@@ -1,195 +1,105 @@
-# Nmor — Nmap on Roids
+# Nmor — Nmap On Roids (v0.2.0, Linux source edition)
 
-A raw-socket port scanner written in Rust. Same command-line muscle memory
-as Nmap, faster underlying engine, a couple of UX upgrades Nmap doesn't
-give you out of the box (no-sudo-after-install, adaptive rate control,
-JSON output).
+**Linux-first** Rust TCP port scanner. Current verified design scope is asynchronous TCP-connect scanning, TCP-based host discovery, IPv4/IPv6 CIDR target expansion, target-file input, and a global concurrency limit. Release candidate source, **not yet compiled in the packaging environment**: run the automated tests and GitHub Actions checks before distributing binaries.
 
-```
-$ nmor -sS scanme.nmap.org -p 22,80,443
+**License: GNU GPL-3.0-only.** See [`LICENSE`](LICENSE). This matches the GPLv3 license in the existing [DeathOFive/Nmor-Nmap-On-Steroids](https://github.com/DeathOFive/Nmor-Nmap-On-Steroids) repository.
 
-Nmor scan report for 45.33.32.156
-PORT       STATE
-22/tcp     open
-80/tcp     open
-443/tcp    closed
+## Linux requirements
 
-Nmor done: 1 host(s) scanned in 1.8s — 3 probes sent, 3 replies received
-```
+- Linux x86_64, including Debian/Ubuntu, Parrot, and **WSL2**. Other Linux CPU architectures can build from source but the provided packaging script targets x86_64.
+- A current stable Rust toolchain (`rustup` and Cargo); GCC / build essentials on Linux.
+- No root or packet-capture privileges for `-sT`: the scanner uses ordinary TCP sockets.
+- Python 3 only for the optional local test listener.
 
----
-
-## Download
-
-### Option A — Prebuilt binary (Linux x86_64, no compiling)
-
-This is the fast path — no Rust, no build tools, nothing to install first.
-
-1. Download the latest release: **[nmor-linux-x86_64.zip](../../releases/latest)**
-2. Extract and install:
-
-   ```bash
-   unzip nmor-linux-x86_64.zip
-   cd nmor_release
-   ./install.sh
-   ```
-
-   The installer copies `nmor` to `/usr/local/bin` and grants it
-   `CAP_NET_RAW` via `setcap`, so you can run SYN/ACK scans **without
-   typing `sudo` every time** — already simpler than a stock Nmap install.
-
-3. Confirm it works:
-
-   ```bash
-   nmor -sT scanme.nmap.org -p 22,80,443
-   ```
-
-Works on native Linux and on **WSL2** (Windows Subsystem for Linux). It
-will *not* work on WSL1 — raw sockets need a real Linux kernel. Check with
-`wsl -l -v`; if your distro says `VERSION 1`, convert it first:
-`wsl --set-version <distro> 2`.
-
-To remove it later: `./uninstall.sh` (from the same extracted folder).
-
-### Option B — Build from source
-
-For non-x86_64 systems, or if you just want to build it yourself:
+### Setup (Linux terminal or VS Code attached to WSL)
 
 ```bash
-git clone <this-repo-url>
-cd nmor
+# On Debian / Ubuntu / WSL2 Debian
+sudo apt update && sudo apt install -y build-essential pkg-config python3 git curl
+# Install Rust using the official rustup instructions at https://rustup.rs/
+source "$HOME/.cargo/env"
+cargo fmt --all
+cargo clippy --all-targets -- -D warnings
+cargo test --all-targets
 cargo build --release
-sudo ./target/release/nmor -sS 127.0.0.1
+./target/release/nmor --version
 ```
 
-Requires a Rust toolchain — install one from [rustup.rs](https://rustup.rs)
-if you don't have one. Any reasonably recent stable version works.
+If rustfmt or Clippy is missing, install components using `rustup component add rustfmt clippy`.
 
-### Platform support
+### Test a known-open local TCP port
 
-| Platform | Status |
+Terminal A:
+
+```bash
+bash scripts/test-local.sh
+```
+
+Terminal B:
+
+```bash
+cargo run -- -sT -Pn -p 8080 127.0.0.1
+cargo run -- -sn -PS8080 127.0.0.1
+cargo run -- -sT -Pn -p 8080 127.0.0.1 127.0.0.1/32
+```
+
+Look for `8080/tcp open`, a TCP discovery response, and `Targets: 1` for the duplicate target. Stop the listener in terminal A with Ctrl+C.
+
+### Commands
+
+```bash
+nmor -sT -Pn -p 22,80,443 127.0.0.1
+nmor -sT -Pn -p 1-1024 192.168.1.1
+nmor -sn -PS22,80,443 192.168.1.0/28
+nmor -iL examples/targets.txt -Pn -p 80,443
+nmor -sT -Pn -p- --concurrency 512 127.0.0.1
+```
+
+| Option | Behavior |
 |---|---|
-| Linux (native), x86_64 |  fully supported, prebuilt binary available |
-| WSL2 |  fully supported (same Linux binary) |
-| Linux, other architectures |  build from source |
-| WSL1 |  no raw sockets — not supported |
-| Windows (native) |  not yet — needs a Npcap/WinPcap-based rewrite of the packet layer |
-| macOS |  untested, likely needs minor portability fixes |
+| `-sT` | Asynchronous TCP connect scan (the only scan engine in this source) |
+| `-Pn` | Skip discovery |
+| `-sn` | Discovery-only using TCP probes |
+| `-PS22,80` | TCP discovery probe ports |
+| `-p 80,443` / `-p-` | Specify ports / all ports |
+| `-iL` | Read targets from a file |
+| `--concurrency 256` | Global maximum simultaneous TCP sockets |
+| `--host-concurrency 16` | Maximum concurrent target tasks |
+| `--timeout 1000` | TCP connect timeout in milliseconds |
+| `--max-hosts 4096` | Maximum number of expanded IP addresses |
 
----
+TCP refusal counts as a responsive host; TCP timeout is inconclusive. Closed and filtered TCP ports are summarized but only open ports are listed. Overlapping targets are deduplicated.
 
-## Usage
-
-If you've used Nmap, this should feel immediately familiar.
-
-```bash
-# SYN scan (the default technique, like Nmap's -sS) — needs root or setcap
-nmor -sS scanme.nmap.org -p 22,80,443
-
-# TCP connect scan — never needs root, good fallback on locked-down systems
-nmor -sT scanme.nmap.org -p 1-1000
-
-# ACK scan — maps which ports a firewall is actually blocking
-nmor -sA 192.168.1.1 -p 1-1000
-
-# SYN scan + lightweight banner/service grab on open ports
-nmor -sSV 192.168.1.0/24 -p 1-1000
-
-# Show *why* each port got its state (syn-ack / reset / no-response)
-nmor -sS 10.0.0.1 -p 1-1000 --reason
-
-# Aggressive timing, every port, write all output formats
-nmor -sS 10.0.0.1 -T4 -p- -oA myscan
-```
-
-### Targets
-
-Accepts anything Nmap does for simple targets: a single IP, a hostname
-(resolved via DNS), a CIDR block, an IP range, or a comma-separated mix.
+### Package a distributable Linux binary
 
 ```bash
-nmor -sS 10.0.0.1,10.0.0.0/24,192.168.1.1-50,scanme.nmap.org -p 80
+bash scripts/package-linux.sh
 ```
 
-### Ports (`-p`)
+After checks pass, expect:
+
+```text
+dist/nmor-v0.2.0-linux-x86_64.tar.gz
+dist/SHA256SUMS.txt
+```
+
+Validate checksum and install to `~/.local/bin` without root:
 
 ```bash
--p 80              # single port
--p 22,80,443       # list
--p 1-1024          # range
--p-                # all 65535 ports
--p-1024            # 1 through 1024
--p1024-            # 1024 through 65535
+cd dist
+sha256sum -c SHA256SUMS.txt
+tar -xzf nmor-v0.2.0-linux-x86_64.tar.gz
+cd nmor_release
+bash install-linux.sh
+~/.local/bin/nmor --help
 ```
 
-If `-p` isn't given, nmor scans its built-in top-100 most common ports.
+Linux binaries compiled against glibc aren't guaranteed to work on every distribution; test on the target systems. `install-linux.sh` does **not** call `setcap`: raw packet privileges are unnecessary for TCP-connect scanning.
 
-### Scan techniques (`-s`)
+### Current limitations / relationship to earlier repository
 
-| Flag | Technique | Needs root/setcap? |
-|---|---|---|
-| `-sS` | SYN scan (default) | yes |
-| `-sT` | TCP connect scan | no |
-| `-sA` | ACK scan (firewall mapping) | yes |
-| `-sV` | banner/version grab (combine: `-sSV`) | no (runs after the main scan) |
-| `-sU`, `-sN`, `-sF`, `-sX`, `-sn`, `-O` | — | not implemented yet; nmor tells you clearly instead of guessing |
+The existing repository README describes an earlier Linux *binary* featuring SYN/ACK techniques, adaptive rate control, and multiple output formats. The main branch currently does not publish that binary's original Rust source, so this source edition **does not claim those features**. Keep the earlier binary downloadable as a legacy build until its source and behavior can be reconciled with the GPL-licensed code in this branch.
 
-You can't combine two *techniques* (`-sST` is rejected), but you can
-combine a technique with `-sV` (`-sSV`, `-sTV`).
+This release has **no** SYN (`-sS`), ACK (`-sA`), UDP, ICMP, `-sV`, OS fingerprinting, native JSON, or CVE matching. It is not yet faster than Nmap based on published benchmarks. Unsupported flags should not be advertised as implemented.
 
-### Timing (`-T`) and rate control
-
-```bash
--T0   # paranoid (very slow)
--T3   # normal (default)
--T5   # insane (very fast)
-
---min-rate 100      # floor for the adaptive controller
---max-rate 10000    # ceiling for the adaptive controller
-```
-
-Unlike Nmap's fixed timing model, nmor's sender uses an AIMD adaptive
-controller that backs off automatically if reply rates drop — similar in
-spirit to TCP congestion control. `--min-rate`/`--max-rate` override
-whatever `-T` template you picked.
-
-### Output formats
-
-```bash
--oN file.txt     # human-readable, Nmap-style
--oG file.gnmap   # greppable
--oX file.xml     # structured XML
--oJ file.json    # JSON (nmor extension — real Nmap has no native JSON output)
--oA basename     # all four at once: basename.txt/.gnmap/.xml/.json
-```
-
-### Other compatibility flags
-
-`-Pn`, `-n`, `-e/--interface` are accepted (so your old Nmap command lines
-don't break) but currently no-ops — nmor never pings before scanning and
-doesn't do reverse-DNS lookups anyway.
-
----
-
-## Why nmor instead of Nmap?
-
-- **Simpler privilege story**: one `setcap` call at install time, no
-  `sudo` needed for every scan afterward.
-- **Adaptive rate control** baked in, not a manual tuning exercise.
-- **JSON output** natively, no XML-to-JSON conversion step.
-- **Modern Rust codebase**: memory-safe packet parsing, no 20+ years of
-  C/C++ legacy baggage.
-
-## What it doesn't do (yet)
-
-Being honest about the gap:
-
-- No OS fingerprinting (`-O` is a no-op for now; a minimal TTL-based guess
-  is planned, not full signature matching)
-- No NSE-style scripting engine
-- No UDP scanning
-- IPv4 only — no IPv6 support yet
-- `-sV` is a lightweight banner grab, not Nmap's full probe-database
-  version detection
-
-This a beta version, be free to test it out! :)
+See [`docs/VERSION_PLAN.md`](docs/VERSION_PLAN.md) for the eventual Linux/Windows merge in v0.3.0.
