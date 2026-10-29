@@ -1,6 +1,6 @@
 # Nmor — Nmap On Roids (v0.2.0, Linux source edition)
 
-**Linux-first** Rust TCP port scanner. Current verified design scope is asynchronous TCP-connect scanning, TCP-based host discovery, IPv4/IPv6 CIDR target expansion, target-file input, and a global concurrency limit. Release candidate source, **not yet compiled in the packaging environment**: run the automated tests and GitHub Actions checks before distributing binaries.
+**Linux-first** Rust TCP port scanner. Current verified design scope is asynchronous TCP-connect scanning, TCP-based host discovery, IPv4/IPv6 CIDR target expansion, target-file input, and a global concurrency limit. The Linux source passed GitHub Actions formatting, lint, tests, and release build on the `linux-v0.2.0` branch. Release artifacts should still be tested on the target Linux distributions before publication.
 
 **License: GNU GPL-3.0-only.** See [`LICENSE`](LICENSE). This matches the GPLv3 license in the existing [DeathOFive/Nmor-Nmap-On-Steroids](https://github.com/DeathOFive/Nmor-Nmap-On-Steroids) repository.
 
@@ -76,7 +76,7 @@ TCP refusal counts as a responsive host; TCP timeout is inconclusive. Closed and
 bash scripts/package-linux.sh
 ```
 
-After checks pass, expect:
+After checks pass, expect (archive version follows `Cargo.toml`):
 
 ```text
 dist/nmor-v0.2.0-linux-x86_64.tar.gz
