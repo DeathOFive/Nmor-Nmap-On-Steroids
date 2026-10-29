@@ -23,7 +23,12 @@ mkdir -p "$stage/nmor_release"
 cp target/release/nmor README.md LICENSE "$stage/nmor_release/"
 cp scripts/install-linux.sh scripts/uninstall-linux.sh "$stage/nmor_release/"
 chmod 755 "$stage/nmor_release/nmor" "$stage/nmor_release/install-linux.sh" "$stage/nmor_release/uninstall-linux.sh"
-archive='nmor-v0.2.0-linux-x86_64.tar.gz'
+version="$(awk -F '"' '/^version[[:space:]]*=/ {print $2; exit}' Cargo.toml)"
+if [[ -z "$version" ]]; then
+  echo 'Could not read package version from Cargo.toml' >&2
+  exit 1
+fi
+archive="nmor-v${version}-linux-x86_64.tar.gz"
 tar -czf "dist/$archive" -C "$stage" nmor_release
 (cd dist && sha256sum "$archive" > SHA256SUMS.txt)
 echo "Packaged: $root/dist/$archive"
